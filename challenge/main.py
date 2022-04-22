@@ -50,16 +50,17 @@ def main(s3):
         update_cursor = conn.cursor()
         obj_id = row[0]
         obj_path = row[1]
-        filebuf = io.BytesIO()
 
         # TODO: check failure cases?
-        s3.Bucket(LEGACY_BUCKET_NAME).Object(obj_path).download_fileobj(filebuf)
+        legacy_obj_response = s3.get_object(Bucket=LEGACY_BUCKET_NAME, Key=obj_path)
+        legacy_obj = legacy_obj_response['Body'].read()
 
         # Replace the first occurrence of its prefix
-        prod_obj_path = obj_path.replace(LEGACY_BUCKET_NAME, PRODUCTION_PATH_PREFIX, 1)
+        prod_obj_path = obj_path.replace(LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, 1)
         # TODO: check failure cases?
-        s3.Bucket(PRODUCTION_BUCKET_NAME).put_object(
-            Body=filebuf,
+        s3.put_object(
+            Bucket=PRODUCTION_BUCKET_NAME,
+            Body=legacy_obj,
             Key=prod_obj_path
         )
         # Once migrated, we update its db record
@@ -71,7 +72,7 @@ def main(s3):
 
 
 if __name__ == "__main__":
-    s3 = boto3.resource(
+    s3 = boto3.client(
         's3',
         endpoint_url=S3_ENDPOINT_URL,
         aws_access_key_id=AWS_ACCESS_KEY_ID,

@@ -36,18 +36,18 @@ def get_db_connection():
 def main(s3):
     conn = get_db_connection()
     cursor = conn.cursor()
+    update_ids = []
 
     read_query = f"SELECT * FROM avatars WHERE path LIKE '{LEGACY_PATH_PREFIX}/%';"
     update_query = """
         UPDATE avatars
-        SET path = REPLACE(path, '{}', '{}')
-        WHERE id = {}
+        SET path = REPLACE(path, %s, %s)
+        WHERE id IN %s
     """
     cursor.execute(read_query)
 
     # Tuples of (id, path)
     for row in cursor:
-        update_cursor = conn.cursor()
         obj_id = row[0]
         obj_path = row[1]
 
@@ -63,10 +63,10 @@ def main(s3):
             Body=legacy_obj,
             Key=prod_obj_path
         )
-        # Once migrated, we update its db record
-        update_cursor.execute(update_query.format(LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, obj_id))
+        update_ids.append(obj_id)
 
     # For benchmarking purposes, only commit on non-debug runs
+    cursor.execute(update_query, (LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, tuple(update_ids),))
     if not DEBUG:
         conn.commit()
 

@@ -50,23 +50,23 @@ def main(s3):
     for row in cursor:
         obj_id = row[0]
         obj_path = row[1]
-
-        # TODO: check failure cases?
-        legacy_obj_response = s3.get_object(Bucket=LEGACY_BUCKET_NAME, Key=obj_path)
-        legacy_obj = legacy_obj_response['Body'].read()
-
-        # Replace the first occurrence of its prefix
         prod_obj_path = obj_path.replace(LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, 1)
-        # TODO: check failure cases?
-        s3.put_object(
+
+        # Directly copy the legacy object to the prod bucket with its new path
+        s3.copy_object(
             Bucket=PRODUCTION_BUCKET_NAME,
-            Body=legacy_obj,
+            CopySource=f"{LEGACY_BUCKET_NAME}/{obj_path}",
             Key=prod_obj_path
         )
+
+        # Signal its ID for update
         update_ids.append(obj_id)
 
-    # For benchmarking purposes, only commit on non-debug runs
+    # Tuple conversion is needed, as psycopg2 requires a tuple in order to translate lists of
+    # values to SQL
     cursor.execute(update_query, (LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, tuple(update_ids),))
+
+    # For benchmarking purposes, only commit on non-debug runs
     if not DEBUG:
         conn.commit()
 

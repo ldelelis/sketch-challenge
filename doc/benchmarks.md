@@ -20,3 +20,12 @@ Memory footprint changes were negligible by duplicating the allocation space of 
 Computation benefits weren't satisfactory, as only about 6 seconds were shaved off of execution time
 
 According to the resulting profile, the vast majority of execution time is spent on API calls to s3.
+
+# 3rd iteration
+
+Duration with direct transfer across buckets: 99s
+
+Reducing the amount of API calls per transfer almost halved execution time once again, as well as lightening the memory footprint of its execution, by not downloading contents to a bytes buffer between transfers
+
+
+A furter improvement could be somehow batching these operations together

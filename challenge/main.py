@@ -1,5 +1,5 @@
-import io
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import boto3
 import psycopg2
@@ -34,6 +34,20 @@ def get_db_connection():
 
 
 def main(s3):
+    def callback(row):
+        obj_id = row[0]
+        obj_path = row[1]
+        prod_obj_path = obj_path.replace(LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, 1)
+
+        # Directly copy the legacy object to the prod bucket with its new path
+        s3.copy_object(
+            Bucket=PRODUCTION_BUCKET_NAME,
+            CopySource=f"{LEGACY_BUCKET_NAME}/{obj_path}",
+            Key=prod_obj_path
+        )
+
+        return obj_id
+
     conn = get_db_connection()
     cursor = conn.cursor()
     update_ids = []
@@ -46,21 +60,13 @@ def main(s3):
     """
     cursor.execute(read_query)
 
-    # Tuples of (id, path)
-    for row in cursor:
-        obj_id = row[0]
-        obj_path = row[1]
-        prod_obj_path = obj_path.replace(LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, 1)
+    tpool = ThreadPoolExecutor(max_workers=100)
 
-        # Directly copy the legacy object to the prod bucket with its new path
-        s3.copy_object(
-            Bucket=PRODUCTION_BUCKET_NAME,
-            CopySource=f"{LEGACY_BUCKET_NAME}/{obj_path}",
-            Key=prod_obj_path
-        )
+    # Tuples of (id, path)
+    for res in tpool.map(callback, cursor):
 
         # Signal its ID for update
-        update_ids.append(obj_id)
+        update_ids.append(res)
 
     # Tuple conversion is needed, as psycopg2 requires a tuple in order to translate lists of
     # values to SQL

@@ -29,3 +29,16 @@ Reducing the amount of API calls per transfer almost halved execution time once 
 
 
 A furter improvement could be somehow batching these operations together
+
+# 4th iteration
+
+Duration with variable workers: between 10 and 12 seconds
+
+Threading was chosen as means of parallelizing execution, as it performs better with IO-bound tasks.
+
+Using a `ThreadPoolExecutor` allowed the script to parallelize the transfer operations across buckets, reducing the massive overhead
+of starting and stopping TCP connections sequentially. This operation is thread-safe in our script, as Boto3's client is declared thread-safe, unlike Sessions and Resources.
+
+**Caveats**: our tooling doesn't support multithreading the best it can. On one hand, cProfile only reads from the main thread by default (that is, without manually instrumenting our code). On the other hand, the Python debugger (and by extension, IPDB), behaves oddly when entering multithreaded code. I haven't researched the alternatives, as the results of my usecases for each were sufficient for this iteration.
+
+Memory footprint increase was also negligible. With a pool of max. 200 workers, an increase of ~20MB heap size was detected.

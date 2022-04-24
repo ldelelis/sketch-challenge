@@ -4,18 +4,13 @@ from concurrent.futures import ThreadPoolExecutor
 import boto3
 import psycopg2
 
-# TODO: extract these to env variables
 LEGACY_PATH_PREFIX = "image"
 PRODUCTION_PATH_PREFIX = "avatar"
 
-DB_USER = "sketch"
-DB_PASS = "sketch"
-DB_NAME = "production-db"
-DB_HOST = "localhost"
-DB_PORT = "5432"
-
 LEGACY_BUCKET_NAME = "legacy-s3"
 PRODUCTION_BUCKET_NAME = "production-s3"
+
+DB_CONN_STRING = os.getenv("DB_CONN_STRING")
 
 S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL', 'http://localhost:9000')
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', 'minioadmin')
@@ -26,15 +21,16 @@ DEBUG = os.getenv('DEBUG', 'false').lower() == "true"
 
 
 def get_db_connection():
-    dsn = f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}"
-    # TODO: exceptions?
-    connection = psycopg2.connect(dsn)
+    # Let exceptions propagate. We can't operate without a db connection so we shouldn't handle this
+    connection = psycopg2.connect(DB_CONN_STRING)
 
     return connection
 
 
 def main(s3):
+    # Declare threaded function via closure. This allows the `s3` client to be usable via scope
     def callback(row):
+        # Row is a tuple of (id, path)
         obj_id = row[0]
         obj_path = row[1]
         prod_obj_path = obj_path.replace(LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, 1)
@@ -50,7 +46,6 @@ def main(s3):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    update_ids = []
 
     read_query = f"SELECT * FROM avatars WHERE path LIKE '{LEGACY_PATH_PREFIX}/%';"
     update_query = """
@@ -62,15 +57,9 @@ def main(s3):
 
     tpool = ThreadPoolExecutor(max_workers=100)
 
-    # Tuples of (id, path)
-    for res in tpool.map(callback, cursor):
+    update_ids = tuple(avatar_id for avatar_id in tpool.map(callback, cursor))
 
-        # Signal its ID for update
-        update_ids.append(res)
-
-    # Tuple conversion is needed, as psycopg2 requires a tuple in order to translate lists of
-    # values to SQL
-    cursor.execute(update_query, (LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, tuple(update_ids),))
+    cursor.execute(update_query, (LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, update_ids,))
 
     # For benchmarking purposes, only commit on non-debug runs
     if not DEBUG:

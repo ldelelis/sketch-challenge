@@ -11,8 +11,9 @@ services:
       POSTGRES_DB: production-db
     volumes:
       - dbdata:/var/lib/postgresql/data
+      - ./sql/sre-challenge-addon1.sql:/docker-entrypoint-initdb.d/init.sql
 
-  bucket-legacy:
+  buckets:
     image: minio/minio:RELEASE.2022-04-16T04-26-02Z
     command: "server /data --console-address :9001"
     ports:

@@ -1,8 +1,13 @@
+import logging
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import boto3
 import psycopg2
+
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s | %(name)s | %(threadName)s | %(message)s')
 
 LEGACY_PATH_PREFIX = "image"
 PRODUCTION_PATH_PREFIX = "avatar"
@@ -21,7 +26,6 @@ DEBUG = os.getenv('DEBUG', 'false').lower() == "true"
 
 
 def get_db_connection():
-    # Let exceptions propagate. We can't operate without a db connection so we shouldn't handle this
     connection = psycopg2.connect(DB_CONN_STRING)
 
     return connection
@@ -36,34 +40,52 @@ def main(s3):
         prod_obj_path = obj_path.replace(LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, 1)
 
         # Directly copy the legacy object to the prod bucket with its new path
-        s3.copy_object(
-            Bucket=PRODUCTION_BUCKET_NAME,
-            CopySource=f"{LEGACY_BUCKET_NAME}/{obj_path}",
-            Key=prod_obj_path
-        )
+        try:
+            s3.copy_object(
+                Bucket=PRODUCTION_BUCKET_NAME,
+                CopySource=f"{LEGACY_BUCKET_NAME}/{obj_path}",
+                Key=prod_obj_path
+            )
+        except:
+            logging.exception(f"Error occurred while trying to transfer {obj_path} across buckets")
+            return None
 
         return obj_id
 
-    conn = get_db_connection()
+    try:
+        conn = get_db_connection()
+    except:
+        logging.exception("Error occurred while creating a connection to the database server")
+        sys.exit(1)
     cursor = conn.cursor()
 
-    read_query = f"SELECT * FROM avatars WHERE path LIKE '{LEGACY_PATH_PREFIX}/%';"
+    read_query = f"""
+        SELECT *
+        FROM avatars
+        WHERE path LIKE '{LEGACY_PATH_PREFIX}/%';
+    """
     update_query = """
         UPDATE avatars
         SET path = REPLACE(path, %s, %s)
         WHERE id IN %s
     """
     cursor.execute(read_query)
+    fetched = cursor.rowcount
 
     tpool = ThreadPoolExecutor(max_workers=100)
 
-    update_ids = tuple(avatar_id for avatar_id in tpool.map(callback, cursor))
+    # A null value means transfer for a given object failed, so we don't update its record
+    update_ids = tuple(avatar_id for avatar_id in tpool.map(callback, cursor) if avatar_id is not None)
+    processed = len(update_ids)
 
     cursor.execute(update_query, (LEGACY_PATH_PREFIX, PRODUCTION_PATH_PREFIX, update_ids,))
 
     # For benchmarking purposes, only commit on non-debug runs
     if not DEBUG:
         conn.commit()
+
+    logging.info(f"Fetched {fetched} avatars")
+    logging.info(f"Processed {processed} avatars")
 
 
 if __name__ == "__main__":

@@ -27,7 +27,6 @@ Duration with direct transfer across buckets: 99s
 
 Reducing the amount of API calls per transfer almost halved execution time once again, as well as lightening the memory footprint of its execution, by not downloading contents to a bytes buffer between transfers
 
-
 A furter improvement could be somehow batching these operations together
 
 # 4th iteration
@@ -42,3 +41,16 @@ of starting and stopping TCP connections sequentially. This operation is thread-
 **Caveats**: our tooling doesn't support multithreading the best it can. On one hand, cProfile only reads from the main thread by default (that is, without manually instrumenting our code). On the other hand, the Python debugger (and by extension, IPDB), behaves oddly when entering multithreaded code. I haven't researched the alternatives, as the results of my usecases for each were sufficient for this iteration.
 
 Memory footprint increase was also negligible. With a pool of max. 200 workers, an increase of ~20MB heap size was detected.
+
+# 5th iteration
+
+Duration with reverted bulk update (2nd iteration): ~14s
+
+While working on implementing retry from a partial execution, I noticed a previous optimization didn't allow for this.
+However, reverting it also required reimplementing handling of db connections, as this implied running a db operation on every thread.
+
+For this I used `psycopg2`'s `ThreadedConnectionPool`, which was designed for this use case. Some tweaking was required around
+connections, as different combinations of minimum and maximum connections resulted in different issues. Partly due to postgresql's
+default `max_connections` value
+
+**NOTE**: this might not be the optimal number of connections. More research and benchmarking is needed

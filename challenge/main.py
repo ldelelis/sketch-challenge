@@ -28,6 +28,8 @@ DEBUG = os.getenv('DEBUG', 'false').lower() == "true"
 def get_db_connection_pool():
     # By default, postgres allows a maximum of 100 simultaneous connections
     # We can bypass this by either tuning postgresql.conf, or by adding a bouncer like `pgBouncer`
+
+    # At the very least, read-wrire permissions on the `avatars` table are required to operate
     conn_pool = ThreadedConnectionPool(50, 100, DB_CONN_STRING)
 
     return conn_pool
@@ -101,6 +103,8 @@ def main(s3):
 
 
 if __name__ == "__main__":
+    # Read-only permissions are required for legacy bucket
+    # Read-write permissions are required for production bucket
     s3 = boto3.client(
         's3',
         endpoint_url=S3_ENDPOINT_URL,

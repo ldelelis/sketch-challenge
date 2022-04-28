@@ -39,3 +39,8 @@ The assignment required any S3-compatible object storage, and a RDBMS (postgreSQ
 I went with MinIO for object storage, since it provides an S3-compatible API for local storage, and it lessens the
 burden of setup and permission management. If a cloud bucket were to be used, some extra scripting would be necessary
 to automate permissions. This could be done with Terraform and any helper scripts deemed fit.
+
+`docker-compose` was used to stand these external services up, as Docker is almost universal in DevOps setups, and
+the compose syntax allows for quickly and easily declaring external services, and provides a comfortable CLI for their
+control (small caveat: Podman was used locally instead of Docker, but no difference should be noticeable as its interface
+is fully compatible with Docker's)
